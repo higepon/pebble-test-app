@@ -11,5 +11,8 @@ $(TARGET): ./src/pebble-test-app.c
 install : $(TARGET)
 	pebble install --emulator chalk
 
+install-cloud : $(TARGET)
+	pebble install --cloudpebble
+
 clean:
 	pebble clean
