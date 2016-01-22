@@ -14,13 +14,57 @@
 
 Window *window;
 TextLayer *text_layer;
-static uint32_t xVec[X_VEC_LENGTH];
+
+// Simple ring buffer
+typedef struct ring_buffer
+{
+  uint32_t *buffer;
+  uint32_t *_consective_buffer;
+  uint32_t length;
+  uint32_t index;
+} ring_buffer;
+
+static ring_buffer* ring_buffer_init(uint32_t length)
+{
+  ring_buffer *ret = (ring_buffer*)malloc(sizeof(ring_buffer));
+  ret->buffer = (uint32_t *)malloc(sizeof(uint32_t) * length);
+  ret->_consective_buffer = (uint32_t *)malloc(sizeof(uint32_t) * length);
+  ret->length = length;
+  ret->index = 0;
+  return ret;
+}
+
+static void ring_buffer_write(ring_buffer* r, uint32_t val)
+{
+  r->buffer[r->index] = val;
+  r->index++;
+  if (r->index == r->length) {
+    r->index = 0;
+  }
+}
+
+static uint32_t* ring_buffer_get_buffer(ring_buffer* r)
+{
+  memset(r->_consective_buffer, 0, r->length * sizeof(uint32_t));
+  memcpy(r->_consective_buffer, r->buffer + r->index, r->length - r->index);
+  memcpy(r->_consective_buffer + r->length - r->index, r->buffer, r->index);
+  return r->_consective_buffer;
+}
+
+static ring_buffer* get_ring_buffer()
+{
+  static ring_buffer* r;
+  if (NULL == r) {
+    r = ring_buffer_init(X_VEC_LENGTH);
+  }
+  return r;
+}
 
 static void timer_callback(void *data) {
   static int x;
   static int y;
   static int z;
-  static int vecIndex;
+  static uint32_t counter;
   AccelData accel = (AccelData) { .x = 0, .y = 0, .z = 0 };
   accel_service_peek(&accel);
   if (x == 0 && y == 0 && z == 0) {
@@ -34,25 +78,28 @@ static void timer_callback(void *data) {
   x = x - accel.x;
   x = y - accel.y;
   x = z - accel.z;
-  xVec[vecIndex] = x * x + y * y + z * z;
-  vecIndex++;
-  //  APP_LOG(APP_LOG_LEVEL_DEBUG, "%d/%d", vecIndex, X_VEC_LENGTH);
-  if (vecIndex == X_VEC_LENGTH) {
+  ring_buffer* r = get_ring_buffer();
+  uint32_t val =  x * x + y * y + z * z;
+  ring_buffer_write(r, val);
+
+  counter++;
+  // every 500 msec, we send it to the companion app
+  if ((counter % 10) == 0) {
     APP_LOG(APP_LOG_LEVEL_DEBUG, "FULL");
-      vecIndex = 0;
-      DictionaryIterator *iter;
-      app_message_outbox_begin(&iter);
-      if (iter == NULL) {
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "null iter");
-        app_timer_register(ACCEL_STEP_MS, timer_callback, NULL);
-        return;
-      }
-      APP_LOG(APP_LOG_LEVEL_DEBUG, "data <%x %x %x>", (unsigned int)(xVec[0]), (unsigned int)(xVec[1]), (unsigned int)(xVec[2]));
-      Tuplet tuple = TupletBytes(MESSAGE_KEY_ACCEL_DATA, (uint8_t*)xVec, X_VEC_LENGTH * sizeof(uint32_t));
-      dict_write_tuplet(iter, &tuple);
-      dict_write_end(iter);
-      APP_LOG(APP_LOG_LEVEL_DEBUG, "Sending...");
-      app_message_outbox_send();
+    DictionaryIterator *iter;
+    app_message_outbox_begin(&iter);
+    if (iter == NULL) {
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "null iter");
+      app_timer_register(ACCEL_STEP_MS, timer_callback, NULL);
+      return;
+    }
+    uint32_t* data = ring_buffer_get_buffer(r);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "data <%x %x %x>", (unsigned int)(data[0]), (unsigned int)(data[1]), (unsigned int)(data[2]));
+    Tuplet tuple = TupletBytes(MESSAGE_KEY_ACCEL_DATA, (uint8_t*)data, r->length * sizeof(uint32_t));
+    dict_write_tuplet(iter, &tuple);
+    dict_write_end(iter);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Sending...");
+    app_message_outbox_send();
   }
 
   app_timer_register(ACCEL_STEP_MS, timer_callback, NULL);    
