@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <math.h>
 
 #define ACCEL_STEP_MS 50
 #define X_VEC_LENGTH 85
@@ -9,9 +10,11 @@
 #define CLASSIFYER_NUM 3
 #define THETA_SIZE 85 * 90
 
+#define MESSAGE_KEY_ACCEL_DATA 0
+
 Window *window;
 TextLayer *text_layer;
-static double xVec[X_VEC_LENGTH];
+static uint32_t xVec[X_VEC_LENGTH];
 
 static void timer_callback(void *data) {
   static int x;
@@ -33,7 +36,7 @@ static void timer_callback(void *data) {
   x = z - accel.z;
   xVec[vecIndex] = x * x + y * y + z * z;
   vecIndex++;
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "%d/%d", vecIndex, X_VEC_LENGTH);
+  //  APP_LOG(APP_LOG_LEVEL_DEBUG, "%d/%d", vecIndex, X_VEC_LENGTH);
   if (vecIndex == X_VEC_LENGTH) {
     APP_LOG(APP_LOG_LEVEL_DEBUG, "FULL");
       vecIndex = 0;
@@ -41,10 +44,11 @@ static void timer_callback(void *data) {
       app_message_outbox_begin(&iter);
       if (iter == NULL) {
         APP_LOG(APP_LOG_LEVEL_DEBUG, "null iter");
+        app_timer_register(ACCEL_STEP_MS, timer_callback, NULL);
         return;
       }
-      Tuplet tuple = TupletBytes(0, (uint8_t*)xVec, X_VEC_LENGTH);
-      //      Tuplet tuple = TupletInteger(0, 100);
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "data <%x %x %x>", (unsigned int)(xVec[0]), (unsigned int)(xVec[1]), (unsigned int)(xVec[2]));
+      Tuplet tuple = TupletBytes(MESSAGE_KEY_ACCEL_DATA, (uint8_t*)xVec, X_VEC_LENGTH * sizeof(uint32_t));
       dict_write_tuplet(iter, &tuple);
       dict_write_end(iter);
       APP_LOG(APP_LOG_LEVEL_DEBUG, "Sending...");
@@ -59,7 +63,13 @@ static void timer_callback(void *data) {
 }
 
 static void inbox_received_callback(DictionaryIterator *iterator, void *context) {
-  APP_LOG(APP_LOG_LEVEL_INFO, "Message received!");
+  Tuple *data = dict_find(iterator, 1);
+  if (data) {
+    APP_LOG(APP_LOG_LEVEL_INFO, "KEY_DATA received with value %d", (int)data->value->int32);
+  } else {
+    APP_LOG(APP_LOG_LEVEL_INFO, "KEY_DATA not received.");
+  }
+  //  APP_LOG(APP_LOG_LEVEL_INFO, "Message received!");
 }
 
 static void inbox_dropped_callback(AppMessageResult reason, void *context) {
