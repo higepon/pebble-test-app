@@ -109,10 +109,14 @@ static void timer_callback(void *data) {
   return;
 }
 
+static char* texts[] = { "Noise", "Down", "Warrior" };
 static void inbox_received_callback(DictionaryIterator *iterator, void *context) {
   Tuple *data = dict_find(iterator, 1);
   if (data) {
     APP_LOG(APP_LOG_LEVEL_INFO, "KEY_DATA received with value %d", (int)data->value->int32);
+
+    //    snprintf(buf, 32, "%d", (int)data->value->int32);
+    text_layer_set_text(text_layer, texts[data->value->int32]);
   } else {
     APP_LOG(APP_LOG_LEVEL_INFO, "KEY_DATA not received.");
   }
@@ -141,6 +145,7 @@ void init() {
 
   window = window_create();
   text_layer = text_layer_create(GRect(50, 50, 144, 40));
+  text_layer_set_font(text_layer, fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD));
   text_layer_set_text(text_layer, "Hello, Pebble!");
   layer_add_child(window_get_root_layer(window), 
                     text_layer_get_layer(text_layer));
