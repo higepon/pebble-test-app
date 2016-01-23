@@ -12,6 +12,8 @@
 
 #define MESSAGE_KEY_ACCEL_DATA 0
 
+#define LOG_DATA
+
 Window *window;
 TextLayer *text_layer;
 
@@ -76,8 +78,12 @@ static void timer_callback(void *data) {
   }
 
   x = x - accel.x;
-  x = y - accel.y;
-  x = z - accel.z;
+  y = y - accel.y;
+  z = z - accel.z;
+#ifdef LOG_DATA
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "%d %d %d", x, y, z);
+#endif
+
   ring_buffer* r = get_ring_buffer();
   uint32_t val =  x * x + y * y + z * z;
   ring_buffer_write(r, val);
@@ -85,27 +91,32 @@ static void timer_callback(void *data) {
   counter++;
   // every 500 msec, we send it to the companion app
   if ((counter % 10) == 0) {
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "FULL");
     DictionaryIterator *iter;
     app_message_outbox_begin(&iter);
     if (iter == NULL) {
+#ifndef LOG_DATA
       APP_LOG(APP_LOG_LEVEL_DEBUG, "null iter");
+#endif
       app_timer_register(ACCEL_STEP_MS, timer_callback, NULL);
       return;
     }
     uint32_t* data = ring_buffer_get_buffer(r);
+#ifndef LOG_DATA
     APP_LOG(APP_LOG_LEVEL_DEBUG, "data <%x %x %x>", (unsigned int)(data[0]), (unsigned int)(data[1]), (unsigned int)(data[2]));
+#endif
     Tuplet tuple = TupletBytes(MESSAGE_KEY_ACCEL_DATA, (uint8_t*)data, r->length * sizeof(uint32_t));
     dict_write_tuplet(iter, &tuple);
     dict_write_end(iter);
+#ifndef LOG_DATA
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Sending...");
+#endif
     app_message_outbox_send();
   }
 
   app_timer_register(ACCEL_STEP_MS, timer_callback, NULL);    
   x = accel.x;
   y = accel.y;
-  y = accel.z;
+  z = accel.z;
   return;
 }
 
@@ -113,26 +124,36 @@ static char* texts[] = { "Noise", "Down", "Warrior" };
 static void inbox_received_callback(DictionaryIterator *iterator, void *context) {
   Tuple *data = dict_find(iterator, 1);
   if (data) {
+#ifndef LOG_DATA
     APP_LOG(APP_LOG_LEVEL_INFO, "KEY_DATA received with value %d", (int)data->value->int32);
+#endif
 
     //    snprintf(buf, 32, "%d", (int)data->value->int32);
     text_layer_set_text(text_layer, texts[data->value->int32]);
   } else {
+#ifndef LOG_DATA
     APP_LOG(APP_LOG_LEVEL_INFO, "KEY_DATA not received.");
+#endif
   }
   //  APP_LOG(APP_LOG_LEVEL_INFO, "Message received!");
 }
 
 static void inbox_dropped_callback(AppMessageResult reason, void *context) {
+#ifndef LOG_DATA
   APP_LOG(APP_LOG_LEVEL_ERROR, "Message dropped!");
+#endif
 }
 
 static void outbox_failed_callback(DictionaryIterator *iterator, AppMessageResult reason, void *context) {
+#ifndef LOG_DATA
   APP_LOG(APP_LOG_LEVEL_ERROR, "Outbox send failed! %d", reason);
+#endif
 }
 
 static void outbox_sent_callback(DictionaryIterator *iterator, void *context) {
+#ifndef LOG_DATA
   APP_LOG(APP_LOG_LEVEL_INFO, "Outbox send success!");
+#endif
 }
 
 void init() {
